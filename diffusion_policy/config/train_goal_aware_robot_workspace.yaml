@@ -1,0 +1,87 @@
+# Goal-Aware Diffusion Policy Training Configuration
+# Based on the Efficient Policy paper - joint action + goal prediction
+
+defaults:
+  - _self_
+  - task: robot_goal_aware
+
+name: train_goal_aware_diffusion
+_target_: diffusion_policy.workspace.train_goal_aware_workspace.TrainGoalAwareWorkspace
+
+task_name: ${task.task_name}
+exp_name: "default"
+output_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+
+# Policy configuration
+policy:
+  _target_: diffusion_policy.policy.goal_aware_diffusion_policy.GoalAwareDiffusionPolicy
+  
+  shape_meta: ${task.shape_meta}
+  
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddim.DDIMScheduler
+    num_train_timesteps: 100
+    beta_start: 0.0001
+    beta_end: 0.02
+    beta_schedule: squaredcos_cap_v2
+    clip_sample: True
+    set_alpha_to_one: True
+    steps_offset: 0
+    prediction_type: epsilon
+  
+  horizon: ${task.horizon}
+  n_action_steps: ${task.n_action_steps}
+  n_obs_steps: ${task.n_obs_steps}
+  num_inference_steps: 8
+  obs_as_global_cond: True
+  crop_shape: null  # Same as CFG - use full 224x224 image
+  diffusion_step_embed_dim: 128
+  down_dims: [256, 512, 1024]  # Same as CFG
+  kernel_size: 5
+  n_groups: 8
+  cond_predict_scale: True
+  obs_encoder_group_norm: True
+  eval_fixed_crop: True
+  
+  # CFG parameters
+  future_cond_horizon: ${task.future_cond_horizon}
+  cf_drop_prob: 0.3
+  
+  # Goal prediction parameters
+  goal_dim: 10  # pos(3) + rot6d(6) + gripper(1)
+  goal_loss_weight: 0.1
+
+# Training configuration
+training:
+  device: "cuda:0"
+  seed: 42
+  num_epochs: 350
+  batch_size: 64
+  lr: 1.0e-4
+  betas: [0.95, 0.999]
+  weight_decay: 1.0e-6
+  max_grad_norm: 10
+  
+  # LR scheduler
+  lr_scheduler: cosine
+  lr_warmup_steps: 500
+  
+  # EMA
+  use_ema: True
+  ema_power: 0.75
+  
+  # Checkpointing
+  checkpoint_every: 50
+  
+  # Dataloader
+  num_workers: 4
+
+# Logging configuration
+logging:
+  mode: online  # online or offline
+  project: goal_aware_diffusion_policy
+  name: ${task_name}_${now:%Y%m%d_%H%M%S}
+
+hydra:
+  run:
+    dir: ${output_dir}

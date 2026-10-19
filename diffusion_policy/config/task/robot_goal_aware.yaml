@@ -1,0 +1,114 @@
+# Task configuration for Goal-Aware Diffusion Policy
+# Robot with 2x RGB-D cameras + 1x Fisheye camera
+# Based on the Efficient Policy paper
+
+name: robot_goal_aware
+task_name: robot_goal_aware
+
+# Latency settings
+camera_obs_latency: 0.0
+robot_obs_latency: 0.000
+gripper_obs_latency: 0.0
+dataset_frequeny: 10
+
+# Observation settings
+obs_down_sample_steps: 1
+low_dim_obs_horizon: 2
+img_obs_horizon: 2
+action_horizon: 16
+
+# Policy parameters
+horizon: 16
+n_obs_steps: 2
+n_action_steps: 8
+pad_before: 1
+pad_after: 7
+future_cond_horizon: 4
+
+shape_meta: &shape_meta
+  obs:
+    # Camera 0 (RGB)
+    camera0_rgb:
+      shape: [3, 224, 224]
+      horizon: ${task.img_obs_horizon}
+      latency_steps: 0
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: rgb
+      ignore_by_policy: False
+    
+    # Camera 1 (RGB)
+    camera1_rgb:
+      shape: [3, 224, 224]
+      horizon: ${task.img_obs_horizon}
+      latency_steps: 0
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: rgb
+      ignore_by_policy: False
+    
+    # Fisheye Camera (RGB)
+    camera2_rgb:
+      shape: [3, 224, 224]
+      horizon: ${task.img_obs_horizon}
+      latency_steps: 0
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: rgb
+      ignore_by_policy: False
+    
+    # Robot end effector position
+    robot0_eef_pos:
+      shape: [3]
+      horizon: ${task.low_dim_obs_horizon}
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'}
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: low_dim
+    
+    # Robot end effector rotation (axis-angle -> rotation_6d)
+    robot0_eef_rot_axis_angle:
+      raw_shape: [3]
+      shape: [6]
+      horizon: ${task.low_dim_obs_horizon}
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'}
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: low_dim
+      rotation_rep: rotation_6d
+    
+    # Gripper width
+    robot0_gripper_width:
+      shape: [1]
+      horizon: ${task.low_dim_obs_horizon}
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.gripper_obs_latency}) * ${task.dataset_frequeny}'}
+      down_sample_steps: ${task.obs_down_sample_steps}
+      type: low_dim
+  
+  action:
+    shape: [10]  # pos(3) + rot6d(6) + gripper(1)
+    horizon: ${task.action_horizon}
+    latency_steps: 0
+    down_sample_steps: ${task.obs_down_sample_steps}
+    rotation_rep: rotation_6d
+  
+  goal:
+    shape: [10]  # pos(3) + rot6d(6) + gripper(1)
+
+dataset_path: data/robot_dataset/dataset.zarr.zip
+
+pose_repr: &pose_repr
+  obs_pose_repr: abs
+  action_pose_repr: abs
+
+dataset:
+  _target_: diffusion_policy.dataset.goal_aware_umi_dataset.GoalAwareUmiDataset
+  shape_meta: *shape_meta
+  dataset_path: ${task.dataset_path}
+  cache_dir: null
+  pose_repr: *pose_repr
+  seed: 42
+  val_ratio: 0.05
+  max_duration: null
+  # Skill detection
+  gripper_change_threshold: 0.01
+  min_change_interval: 15
+  skill_window: 30  # ±30 frames around gripper change
+  # Goal configuration
+  goal_dim: 10
+  goal_distance_threshold: 0.03  # 3cm - goal must be within this distance to gripper change
